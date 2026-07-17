@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enterprise RAG — RBAC Demo Console</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+    --chip-eng: #1f6feb; --chip-hr: #bf3989; --chip-fin: #9e6a03;
+    --chip-exec: #8957e5; --chip-pub: #238636; --chip-sec: #da3633;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: center; gap: 12px; background: var(--panel); }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px;
+                  background: #1f6feb33; color: var(--accent); border: 1px solid #1f6feb66; }
+  #userbox { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  #logout { background: none; border: 1px solid var(--border); color: var(--muted);
+            border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  #logout:hover { color: var(--text); border-color: var(--muted); }
+  main { flex: 1; display: flex; min-height: 0; }
+  /* sidebar */
+  #sidebar { width: 260px; border-right: 1px solid var(--border); background: var(--panel);
+             padding: 16px; overflow-y: auto; }
+  #sidebar h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                color: var(--muted); margin: 14px 0 8px; }
+  .doc { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .doc .title { font-weight: 600; margin-bottom: 4px; }
+  .chip { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 8px;
+          color: #fff; margin-right: 4px; }
+  .chip.engineering { background: var(--chip-eng); } .chip.hr { background: var(--chip-hr); }
+  .chip.finance { background: var(--chip-fin); } .chip.executive { background: var(--chip-exec); }
+  .chip.public, .chip.general { background: var(--chip-pub); } .chip.security { background: var(--chip-sec); }
+  .chip.other { background: #6e7681; }
+  /* chat */
+  #chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #messages { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 760px; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: #1f6feb; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg.bot .denied { color: var(--red); }
+  .sources { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .src { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+  .src .score { margin-left: auto; color: var(--green); font-variant-numeric: tabular-nums; }
+  #composer { display: flex; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border); background: var(--panel); }
+  #q { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+       color: var(--text); padding: 10px 14px; font-size: 14px; outline: none; }
+  #q:focus { border-color: var(--accent); }
+  #send { background: var(--accent); border: none; color: #fff; padding: 0 22px; border-radius: 8px;
+          font-size: 14px; font-weight: 600; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: default; }
+  /* login overlay */
+  #login { position: fixed; inset: 0; background: #0d1117ee; display: flex; align-items: center; justify-content: center; z-index: 10; }
+  #login .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+                 padding: 32px; width: 380px; }
+  #login h2 { font-size: 18px; margin-bottom: 4px; }
+  #login p { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  #login label { font-size: 12px; color: var(--muted); display: block; margin: 12px 0 4px; }
+  #login select, #login input { width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 9px 12px; font-size: 14px; }
+  #loginBtn { width: 100%; margin-top: 20px; background: var(--accent); border: none; color: #fff;
+              padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #loginErr { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .rolehint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="card">
+    <h2>Enterprise RAG Console</h2>
+    <p>Sign in with a demo identity. Each identity carries different roles — watch how the same question yields different answers.</p>
+    <label>Identity</label>
+    <select id="username"></select>
+    <div class="rolehint" id="rolehint"></div>
+    <label>Password</label>
+    <input id="password" type="password">
+    <button id="loginBtn">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
+
+<header>
+  <h1>🔐 Enterprise RAG <span style="color:var(--muted);font-weight:400">/ internal knowledge with RBAC</span></h1>
+  <span class="badge" id="llmbadge">…</span>
+  <div id="userbox" class="hidden">
+    <span id="whoami"></span>
+    <button id="logout">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <aside id="sidebar" class="hidden">
+    <h2>My roles</h2>
+    <div id="myroles"></div>
+    <h2>Documents I can see</h2>
+    <div id="doclist"></div>
+  </aside>
+  <section id="chat">
+    <div id="messages"></div>
+    <div id="composer">
+      <input id="q" placeholder="Ask about PTO, deploys, salary bands, Q3 revenue, Project Falcon…" autocomplete="off">
+      <button id="send">Ask</button>
+    </div>
+  </section>
+</main>
+
+<script>
+let TOKEN = null, DEV_USERS = {};
+
+async function loadLogin() {
+  DEV_USERS = await (await fetch('/auth/dev-users')).json();
+  const sel = document.getElementById('username');
+  for (const [u, rec] of Object.entries(DEV_USERS)) {
+    const opt = document.createElement('option');
+    opt.value = u; opt.textContent = `${rec.name} — [${rec.roles.join(', ') || 'public only'}]`;
+    sel.appendChild(opt);
+  }
+  sel.onchange = () => {
+    document.getElementById('password').value = DEV_USERS[sel.value].password;
+    document.getElementById('rolehint').textContent = 'roles: ' + (DEV_USERS[sel.value].roles.join(', ') || '(none — public docs only)');
+  };
+  sel.onchange();
+}
+
+document.getElementById('loginBtn').onclick = async () => {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const resp = await fetch('/auth/token', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  if (!resp.ok) { document.getElementById('loginErr').textContent = 'Sign-in failed: ' + resp.status; return; }
+  TOKEN = (await resp.json()).access_token;
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('userbox').classList.remove('hidden');
+  document.getElementById('sidebar').classList.remove('hidden');
+  document.getElementById('whoami').textContent = DEV_USERS[username].name;
+  document.getElementById('llmbadge').textContent = 'RBAC enforced at retrieval';
+  bot(`Signed in as ${DEV_USERS[username].name}. My document view is filtered to my roles — try asking about another department's data.`);
+  loadDocs();
+};
+
+document.getElementById('logout').onclick = () => location.reload();
+
+function chip(role) { return `<span class="chip ${role}">${role}</span>`; }
+
+async function loadDocs() {
+  const data = await (await fetch('/documents', {headers: auth()})).json();
+  document.getElementById('myroles').innerHTML =
+    data.viewer_roles.map(chip).join('') || chip('public');
+  document.getElementById('doclist').innerHTML = data.documents.map(d =>
+    `<div class="doc"><div class="title">${d.title}</div>
+     <div>${chip(d.department)}${d.allowed_roles.split(',').map(chip).join('')}
+     <span style="float:right;color:var(--muted)">${d.chunks} chunks</span></div></div>`
+  ).join('') || '<div style="color:var(--muted);font-size:13px">No visible documents.</div>';
+}
+
+function auth() { return {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}; }
+
+function addMsg(cls, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls; div.innerHTML = html;
+  document.getElementById('messages').appendChild(div);
+  div.scrollIntoView({behavior: 'smooth'});
+  return div;
+}
+function bot(text, sources) {
+  let html = escapeHtml(text);
+  if (sources) {
+    html += '<div class="sources">Sources (already RBAC-filtered):' + sources.map(s =>
+      `<div class="src"><b>#${s.rank}</b> ${escapeHtml(s.title)} ${chip(s.department)}<span class="score">${s.score.toFixed(2)}</span></div>`
+    ).join('') + '</div>';
+  }
+  addMsg('bot', html);
+}
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function ask() {
+  const q = document.getElementById('q');
+  const question = q.value.trim();
+  if (!question || !TOKEN) return;
+  q.value = '';
+  addMsg('user', escapeHtml(question));
+  const thinking = addMsg('bot', '<span style="color:var(--muted)">Searching authorized documents…</span>');
+  document.getElementById('send').disabled = true;
+  try {
+    const resp = await (await fetch('/query', {method: 'POST', headers: auth(), body: JSON.stringify({question})})).json();
+    thinking.remove();
+    if (resp.sources.length === 0) bot('<span class="denied">⛔ ' + escapeHtml(resp.answer) + '</span>');
+    else bot(resp.answer, resp.sources);
+  } catch (e) { thinking.innerHTML = 'Request failed: ' + e; }
+  document.getElementById('send').disabled = false;
+  document.getElementById('q').focus();
+}
+document.getElementById('send').onclick = ask;
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+loadLogin();
+</script>
+</body>
+</html>
